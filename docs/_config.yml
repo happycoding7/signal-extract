@@ -1,0 +1,4 @@
+title: Signal Extract Docs
+description: Architecture, HLD, and LLD documentation for maintainers
+theme: minima
+markdown: kramdown

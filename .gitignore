@@ -1,0 +1,9 @@
+data/
+.env
+__pycache__/
+*.pyc
+.ruff_cache/
+.venv/
+venv/
+web/node_modules/
+web/dist/

@@ -1,0 +1,22 @@
+[project]
+name = "signal-extract"
+version = "0.2.0"
+description = "Enterprise developer tool opportunity discovery via signal extraction"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31",
+    "feedparser>=6.0",
+    "anthropic>=0.40",
+    "openai>=1.50",
+    "python-dotenv>=1.0",
+    "flask>=3.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+
+[project.scripts]
+signal = "main:cli"
+
+[tool.ruff]
+line-length = 100
