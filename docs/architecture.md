@@ -31,6 +31,73 @@ Where:
 - `Persist`: SQLite with append-oriented history and run tracking
 - `Serve`: CLI outputs, read-only Flask API, React UI
 
+## Visual System Architecture
+
+```mermaid
+flowchart LR
+    U["User"]
+    CRON["Scheduler"]
+
+    subgraph EXTERNAL["External APIs"]
+        GH["GitHub API"]
+        HN["Hacker News APIs"]
+        RSS["RSS Feeds"]
+        NVD["NVD API"]
+        LLMX["LLM Provider API"]
+    end
+
+    subgraph APP["Signal Extract Runtime"]
+        CLI["CLI Orchestrator"]
+        COL["Collectors"]
+        FIL["Deterministic Scorer"]
+        SYN["Synthesizer"]
+        API["Flask Read API"]
+        WEB["React Frontend"]
+    end
+
+    DB[("SQLite Database")]
+    CACHE["Cache Layer"]
+
+    U --> WEB
+    U --> CLI
+    CRON --> CLI
+
+    CLI --> COL
+    COL --> GH
+    COL --> HN
+    COL --> RSS
+    COL --> NVD
+    COL --> FIL
+    FIL --> DB
+
+    CLI --> SYN
+    SYN --> DB
+    SYN --> LLMX
+    SYN --> DB
+
+    WEB --> API
+    API --> DB
+
+    API -. "Optional future read cache" .-> CACHE
+    WEB -. "Browser cache only today" .-> CACHE
+```
+
+## Workflow Diagram
+
+```mermaid
+flowchart TD
+    A["Start run"] --> B["Collect from all sources"]
+    B --> C["Normalize to Item"]
+    C --> D["Score via regex and heuristics"]
+    D --> E{"score >= threshold"}
+    E -- "no" --> F["Drop item"]
+    E -- "yes" --> G["Persist item to SQLite"]
+    G --> H["Generate digest and opportunities"]
+    H --> I["Persist outputs"]
+    I --> J["Serve via CLI API UI"]
+    F --> J
+```
+
 ## Sync vs Async Boundaries
 
 - Collection and scoring are synchronous per run.
@@ -59,6 +126,43 @@ Stateful:
 - Data boundary: local SQLite file is the system of record
 
 No runtime coupling requires collectors to be online while serving historical data.
+
+## Request and Run Sequences
+
+```mermaid
+sequenceDiagram
+    participant S as Scheduler
+    participant M as main.py
+    participant C as Collectors
+    participant F as Scorer
+    participant D as SQLite
+    participant L as LLM Provider
+
+    S->>M: python main.py run
+    M->>C: collect()
+    C->>D: read collector_state
+    C->>C: fetch external APIs
+    C->>F: raw items
+    F->>D: insert scored items
+    M->>L: digest synthesis prompt
+    L-->>M: digest text or JSON
+    M->>D: save digests and opportunities
+```
+
+```mermaid
+sequenceDiagram
+    participant U as User Browser
+    participant W as React UI
+    participant A as Flask API
+    participant D as SQLite
+
+    U->>W: Open opportunities page
+    W->>A: GET /api/opportunities
+    A->>D: query opportunities and evidence
+    D-->>A: rows
+    A-->>W: JSON response
+    W-->>U: Render cards and details
+```
 
 ## Trust, Security, and Compliance Boundaries
 
@@ -138,6 +242,15 @@ The system is not a compliance product itself but processes compliance-related s
 - Moving to larger LLM models without tighter prompt windows
 - Expanding source catalog without per-source quality controls
 - Serving heavy analytical queries directly from a single SQLite file at high concurrency
+
+## Caching Reality
+
+- There is no dedicated server-side cache layer in the current design.
+- Effective caching today comes from:
+  - Collector incremental state (`collector_state`) reducing duplicate fetch/processing
+  - HTTP feed conditional requests (`etag`, `modified`) in RSS collector
+  - Browser-level caching of static frontend assets
+- If read volume increases, introduce a bounded read cache in front of expensive API queries without changing write-path determinism.
 
 ## Rebuild Test
 

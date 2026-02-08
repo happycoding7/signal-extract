@@ -25,6 +25,49 @@ Excluded:
 Sources -> Ingest -> Normalize -> Score -> Persist -> Serve
 ```
 
+### Container View
+
+```mermaid
+flowchart LR
+    subgraph SOURCES["Sources"]
+        S1["GitHub"]
+        S2["Hacker News"]
+        S3["RSS"]
+        S4["NVD"]
+    end
+
+    subgraph CORE["Core Pipeline"]
+        C1["Collectors"]
+        C2["Normalization"]
+        C3["Deterministic Scoring"]
+        C4["Persistence"]
+    end
+
+    subgraph SYNTH["Interpretation Layer"]
+        L1["LLM Provider Interface"]
+        L2["Digest and Opportunity Synthesis"]
+    end
+
+    subgraph ACCESS["Access Layer"]
+        A1["CLI"]
+        A2["Flask API"]
+        A3["React UI"]
+    end
+
+    DB[("SQLite")]
+
+    S1 --> C1
+    S2 --> C1
+    S3 --> C1
+    S4 --> C1
+    C1 --> C2 --> C3 --> C4 --> DB
+    DB --> L2
+    L2 --> DB
+    L1 --> L2
+    DB --> A1
+    DB --> A2 --> A3
+```
+
 ### Sync vs Async Boundaries
 
 - Sync: collection, scoring, persistence, synthesis requests
@@ -41,6 +84,17 @@ Sources -> Ingest -> Normalize -> Score -> Persist -> Serve
 - Serving boundary (Flask API + static frontend)
 - Storage boundary (single local DB)
 
+### Workflow Boundary View
+
+```mermaid
+flowchart TD
+    B1["Batch Commands"] --> P1["collect run digest weekly opportunities"]
+    B2["Serve Command"] --> P2["read only API and UI"]
+
+    P1 --> W1["State writes enabled"]
+    P2 --> W2["State writes disabled"]
+```
+
 ## 2. Domain Model and Core Concepts
 
 ### Signal Taxonomy
@@ -48,6 +102,26 @@ Sources -> Ingest -> Normalize -> Score -> Persist -> Serve
 - High-signal: technical instability and substantive engineering changes (breakage, outages, security incidents)
 - Enterprise-signal: repeatable, budget-backed pain (compliance friction, DevOps toil, platform engineering gaps)
 - Low-signal: hype, self-promotion, generic opinion with low operational consequence
+
+### Taxonomy Diagram
+
+```mermaid
+mindmap
+  root((Signal))
+    High signal
+      Breaking changes
+      Outages and incidents
+      CVEs and security regressions
+    Enterprise signal
+      Compliance toil
+      CI CD friction
+      Platform engineering pain
+      Observability gaps
+    Low signal
+      Marketing hype
+      Generic opinion
+      Hiring and self promotion
+```
 
 ### Definitions and Invariants
 
@@ -77,3 +151,15 @@ Stability guarantees:
 - Same input item text and metadata produce the same score under same scoring rules
 - Deterministic filtering thresholding yields repeatable inclusion/exclusion behavior
 - Any scoring drift is explicit and version-controlled via rules changes
+
+### Scoring Decision Diagram
+
+```mermaid
+flowchart TD
+    I["Normalized Item"] --> P["Pattern and Engagement Rules"]
+    P --> R["Raw Score"]
+    R --> C["Clamp to 0 to 100"]
+    C --> T{"Above threshold"}
+    T -- "yes" --> K["Persist and expose"]
+    T -- "no" --> D["Discard as noise"]
+```

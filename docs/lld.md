@@ -2,6 +2,36 @@
 
 ## 3. System Components
 
+### Component Interaction Diagram
+
+```mermaid
+flowchart LR
+    M["main.py command router"]
+    CFG["Config loader"]
+    COL["collectors package"]
+    FIL["filters scorer"]
+    STO["storage db"]
+    SYN["synthesizer engine"]
+    QA["qa handler"]
+    DEL["delivery output"]
+    API["api server"]
+    WEB["web frontend"]
+
+    M --> CFG
+    M --> COL
+    M --> FIL
+    M --> STO
+    M --> SYN
+    M --> QA
+    M --> DEL
+    M --> API
+    API --> STO
+    WEB --> API
+    COL --> STO
+    FIL --> STO
+    SYN --> STO
+```
+
 ### Ingestion Layer
 
 Responsibility:
@@ -95,6 +125,26 @@ Idempotency and Retries:
 Scaling Assumptions:
 - Query latency acceptable with indexed SQLite and bounded page sizes
 
+### API Read Path Sequence
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant React
+    participant Flask
+    participant Storage
+    participant SQLite
+
+    Browser->>React: filter opportunities
+    React->>Flask: GET /api/opportunities
+    Flask->>Storage: get_opportunities(filters)
+    Storage->>SQLite: select opportunities and evidence
+    SQLite-->>Storage: result rows
+    Storage-->>Flask: mapped response
+    Flask-->>React: JSON payload
+    React-->>Browser: render cards and detail
+```
+
 ## 4. Data Architecture
 
 ### Core Entities and Relationships
@@ -110,6 +160,70 @@ Relationship intent:
 - A run can produce multiple opportunities
 - An opportunity can contain multiple evidence references
 - Evidence preserves source-level traceability for auditability
+
+### Database ER Diagram
+
+```mermaid
+erDiagram
+    ITEMS {
+        string content_hash PK
+        string source
+        string source_id
+        string url
+        string title
+        string body
+        string metadata_json
+        int score
+        string collected_at
+    }
+
+    COLLECTOR_STATE {
+        string collector_name PK
+        string state_json
+        string updated_at
+    }
+
+    DIGESTS {
+        int id PK
+        string digest_type
+        string content
+        int item_count
+        string generated_at
+    }
+
+    OPPORTUNITY_RUNS {
+        int id PK
+        int digest_id FK
+        int item_count
+        int opportunity_count
+        string generated_at
+    }
+
+    OPPORTUNITIES {
+        string id PK
+        int run_id PK
+        string title
+        string pain
+        string target_buyer
+        string market_type
+        int confidence
+        string generated_at
+    }
+
+    OPPORTUNITY_EVIDENCE {
+        int id PK
+        string opportunity_id FK
+        int run_id FK
+        string source
+        string item_title
+        string url
+        int score
+    }
+
+    DIGESTS ||--o{ OPPORTUNITY_RUNS : links
+    OPPORTUNITY_RUNS ||--o{ OPPORTUNITIES : contains
+    OPPORTUNITIES ||--o{ OPPORTUNITY_EVIDENCE : supports
+```
 
 ### Tenant Isolation Model
 
@@ -132,6 +246,83 @@ Implications:
 - Schema evolution uses additive, in-place SQL migrations executed at startup
 - No external migration framework is required in current architecture
 - Backward compatibility relies on non-destructive table/index additions
+
+## 5. Class and Interface Model
+
+### Domain Class Diagram
+
+```mermaid
+classDiagram
+    class Item {
+      +source
+      +source_id
+      +url
+      +title
+      +body
+      +metadata
+      +collected_at
+      +score
+      +content_hash()
+    }
+
+    class Digest {
+      +digest_type
+      +content
+      +item_count
+      +generated_at
+    }
+
+    class Opportunity {
+      +id
+      +title
+      +pain
+      +target_buyer
+      +solution_shape
+      +market_type
+      +effort_estimate
+      +monetization
+      +moat
+      +confidence
+      +competition_notes
+      +evidence
+      +to_dict()
+    }
+
+    class EvidenceRef {
+      +source
+      +item_title
+      +url
+      +score
+      +to_dict()
+    }
+
+    Opportunity "1" --> "many" EvidenceRef
+```
+
+### Service UML Diagram
+
+```mermaid
+classDiagram
+    class LLMProvider {
+      <<interface>>
+      +complete(system_prompt, user_prompt, temperature, max_tokens)
+      +name()
+    }
+
+    class OpenAIProvider
+    class ClaudeProvider
+    class OpenRouterProvider
+    class Synthesizer
+    class Storage
+    class QAHandler
+
+    LLMProvider <|.. OpenAIProvider
+    LLMProvider <|.. ClaudeProvider
+    LLMProvider <|.. OpenRouterProvider
+    Synthesizer --> LLMProvider
+    Synthesizer --> Storage
+    QAHandler --> Synthesizer
+```
 
 ## 8. Repository Map (By Intent)
 
